@@ -21,12 +21,21 @@
  */
 #ifndef _BMA_H
     #define _BMA_H
+
+    #include "TTGO.h"
+    #include "callback.h"
     
-    #define     BMA_EVENT_INT       _BV(0)
+    #define BMACTL_EVENT_INT            _BV(0)              /** @brief event mask for bma interrupt */
+    #define BMACTL_DOUBLECLICK          _BV(1)              /** @brief event mask for an doubleclick event */
+    #define BMACTL_STEPCOUNTER          _BV(2)              /** @brief event mask for an stepcounter update event, callback arg is (uint32*) */
+    #define BMACTL_TILT                 _BV(3)              /** @brief event mask for an tilt event */
+    #define BMACTL_DAILY_STEPCOUNTER    _BV(4)              /** @brief event mask for an tilt event */
 
-    #define BMA_COFIG_FILE          "/bma.cfg"
-    #define BMA_JSON_COFIG_FILE     "/bma.json"
+    #define BMA_JSON_COFIG_FILE         "/bma.json"         /** @brief defines json config file name */
 
+    /**
+     * @brief bma config structure
+     */
     typedef struct {
         bool enable=true;
     } bma_config_t;
@@ -34,51 +43,67 @@
     enum {  
         BMA_STEPCOUNTER,
         BMA_DOUBLECLICK,
+        BMA_TILT,
+        BMA_DAILY_STEPCOUNTER,
         BMA_CONFIG_NUM
     };
 
-    /*
+    /**
      * @brief setup bma activity measurement
-     * 
-     * @param   ttgo    pointer to an TTGOClass
      */
-    void bma_setup( TTGOClass *ttgo );
-    /*
+    void bma_setup( void );
+    /**
      * @brief loop function for activity measurement
      */
-    void bma_loop( TTGOClass *ttgo );
-    /*
+    void bma_loop( void );
+    /**
      * @brief put bma into standby, depending on ther config
      */
     void bma_standby( void );
-    /*
+    /**
      * @brief wakeup activity measurement
      */
     void bma_wakeup( void );
-    /*
+    /**
      * @brief reload config
      */
     void bma_reload_settings( void );
-    /*
-     * @ brief save the config structure to SPIFF
+    /**
+     * @brief save the config structure to SPIFFS
      */
     void bma_save_config( void );
-    /*
-     * @ brief read the config structure from SPIFF
+    /**
+     * @brief read the config structure from SPIFFS
      */
     void bma_read_config( void );
-    /*
+    /**
      * @brief get config
      * 
-     * @param   config  configitem
+     * @param   config     configitem: BMA_STEPCOUNTER, BMA_DOUBLECLICK or BMA_CONFIG_NUM
      */
     bool bma_get_config( int config );
-    /*
+    /**
      * @brief set config
      * 
-     * @param   config  configitem
-     * @param   enable  true or false
+     * @param   config     configitem: BMA_STEPCOUNTER, BMA_DOUBLECLICK or BMA_CONFIG_NUM
+     * @param   bool    true or false
      */
     void bma_set_config( int config, bool enable );
+    /**
+     * @brief   rotate bma axis
+     * 
+     * @param   rotation on degree
+     */
+    void bma_set_rotate_tilt( uint32_t rotation );
+    /**
+     * @brief registers a callback function which is called on a corresponding event
+     * 
+     * @param   event           possible values: BMACTL_DOUBLECLICK, BMACTL_STEPCOUNTER and BMACTL_TILT
+     * @param   callback_func   pointer to the callback function
+     * @param   id              program id
+     * 
+     * @return  true if success, false if failed
+     */
+    bool bma_register_cb( EventBits_t event, CALLBACK_FUNC callback_func, const char *id );
 
 #endif // _BMA_H

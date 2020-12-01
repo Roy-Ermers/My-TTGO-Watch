@@ -29,13 +29,12 @@
 #include "weather_setup.h"
 #include "images/resolve_owm_icon.h"
 
-#include "gui/mainbar/app_tile/app_tile.h"
+#include "gui/app.h"
+#include "gui/widget.h"
 #include "gui/mainbar/mainbar.h"
-#include "gui/mainbar/main_tile/main_tile.h"
 #include "gui/statusbar.h"
 #include "gui/keyboard.h"
-#include "hardware/motor.h"
-#include "hardware/powermgm.h"
+
 #include "hardware/json_psram_allocator.h"
 #include "hardware/wifictl.h"
 
@@ -49,15 +48,11 @@ weather_forcast_t weather_today;
 uint32_t weather_app_tile_num;
 uint32_t weather_app_setup_tile_num;
 
-lv_obj_t *weather_app_cont = NULL;
-lv_obj_t *weather_widget_cont = NULL;
-lv_obj_t *weather_widget_info_img = NULL;
-lv_obj_t *weather_widget_condition_img = NULL;
-lv_obj_t *weather_widget_temperature_label = NULL;
-lv_obj_t *weather_widget_wind_label = NULL;
+icon_t *weather_app = NULL;
+icon_t * weather_widget = NULL;
 
 static void enter_weather_widget_event_cb( lv_obj_t * obj, lv_event_t event );
-void weather_widget_wifictl_event_cb( EventBits_t event, char* msg );
+bool weather_widget_wifictl_event_cb( EventBits_t event, void *arg );
 
 LV_IMG_DECLARE(owm_01d_64px);
 LV_IMG_DECLARE(info_ok_16px);
@@ -69,73 +64,39 @@ void weather_app_setup( void ) {
     weather_load_config();
 
     // get an app tile and copy mainstyle
-    weather_app_tile_num = mainbar_add_app_tile( 1, 2 );
+    weather_app_tile_num = mainbar_add_app_tile( 1, 2, "Weather App" );
     weather_app_setup_tile_num = weather_app_tile_num + 1;
 
+    // init forecast and setup tile
     weather_forecast_tile_setup( weather_app_tile_num );
     weather_setup_tile_setup( weather_app_setup_tile_num );
 
-    weather_app_cont = app_tile_register_app( "weather");
-    lv_obj_t *weather_app_icon = lv_imgbtn_create( weather_app_cont, NULL );
-    mainbar_add_slide_element(weather_app_icon);
-    lv_imgbtn_set_src( weather_app_icon, LV_BTN_STATE_RELEASED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_app_icon, LV_BTN_STATE_PRESSED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_app_icon, LV_BTN_STATE_CHECKED_RELEASED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_app_icon, LV_BTN_STATE_CHECKED_PRESSED, &owm_01d_64px);
-    lv_obj_reset_style_list( weather_app_icon, LV_OBJ_PART_MAIN );
-    lv_obj_align( weather_app_icon , weather_widget_cont, LV_ALIGN_IN_TOP_LEFT, 0, 0 );
-    lv_obj_set_event_cb( weather_app_icon, enter_weather_widget_event_cb );
-    
-    // get an widget container from main_tile
-    // create widget weather condition icon and temperature label
-    weather_widget_cont = main_tile_register_widget();
-    weather_widget_condition_img = lv_imgbtn_create( weather_widget_cont, NULL );
-    mainbar_add_slide_element(weather_widget_condition_img);
-    lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_RELEASED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_PRESSED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_CHECKED_RELEASED, &owm_01d_64px);
-    lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_CHECKED_PRESSED, &owm_01d_64px);
-    lv_obj_reset_style_list( weather_widget_condition_img, LV_OBJ_PART_MAIN );
-    lv_obj_align( weather_widget_condition_img , weather_widget_cont, LV_ALIGN_IN_TOP_LEFT, 0, 0 );
-    lv_obj_set_event_cb( weather_widget_condition_img, enter_weather_widget_event_cb );
+    weather_app = app_register( "weather", &owm_01d_64px, enter_weather_widget_event_cb );    
 
-    weather_widget_info_img = lv_img_create( weather_widget_cont, NULL );
-    lv_img_set_src( weather_widget_info_img, &info_ok_16px );
-    lv_obj_align( weather_widget_info_img, weather_widget_cont, LV_ALIGN_IN_TOP_RIGHT, 0, 0 );
-    lv_obj_set_hidden( weather_widget_info_img, true );
+    // register app and widget icon
+    if ( weather_config.widget ) {
+        weather_add_widget();
+    }
 
-    weather_widget_temperature_label = lv_label_create( weather_widget_cont , NULL);
-    lv_label_set_text( weather_widget_temperature_label, "n/a");
-    lv_obj_reset_style_list( weather_widget_temperature_label, LV_OBJ_PART_MAIN );
-    lv_obj_align( weather_widget_temperature_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-
-    weather_widget_wind_label = lv_label_create( weather_widget_cont , NULL);
-    lv_label_set_text( weather_widget_wind_label, "");
-    lv_obj_reset_style_list( weather_widget_wind_label, LV_OBJ_PART_MAIN );
-    lv_obj_align( weather_widget_wind_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-
-    if( weather_config.showWind )
-    {
-        lv_obj_align( weather_widget_temperature_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, -20);
-        lv_obj_align( weather_widget_wind_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, +5);
+    if( weather_config.showWind ) {
+        widget_set_extended_label( weather_widget, "n/a" );
     }
 
     weather_widget_event_handle = xEventGroupCreate();
 
-    wifictl_register_cb( WIFICTL_OFF | WIFICTL_CONNECT, weather_widget_wifictl_event_cb );
+    wifictl_register_cb( WIFICTL_OFF | WIFICTL_CONNECT, weather_widget_wifictl_event_cb, "weather" );
 }
 
-void weather_widget_wifictl_event_cb( EventBits_t event, char* msg ) {
-    log_i("weather widget wifictl event: %04x", event );
-
+bool weather_widget_wifictl_event_cb( EventBits_t event, void *arg ) {
     switch( event ) {
         case WIFICTL_CONNECT:       if ( weather_config.autosync ) {
                                         weather_widget_sync_request();
                                     }
                                     break;
-        case WIFICTL_OFF:           lv_obj_set_hidden( weather_widget_info_img, true );
+        case WIFICTL_OFF:           widget_hide_indicator( weather_widget );
                                     break;
     }
+    return( true );
 }
 
 static void enter_weather_widget_event_cb( lv_obj_t * obj, lv_event_t event ) {
@@ -144,6 +105,14 @@ static void enter_weather_widget_event_cb( lv_obj_t * obj, lv_event_t event ) {
                                         mainbar_jump_to_tilenumber( weather_app_tile_num, LV_ANIM_OFF );
                                         break;
     }    
+}
+
+void weather_add_widget( void ) {
+    weather_widget = widget_register( "n/a", &owm_01d_64px, enter_weather_widget_event_cb );
+}
+
+void weather_remove_widget( void ) {
+    weather_widget = widget_remove( weather_widget );
 }
 
 void weather_jump_to_forecast( void ) {
@@ -162,7 +131,7 @@ void weather_widget_sync_request( void ) {
     }
     else {
         xEventGroupSetBits( weather_widget_event_handle, WEATHER_WIDGET_SYNC_REQUEST );
-        lv_obj_set_hidden( weather_widget_info_img, true );
+        widget_hide_indicator( weather_widget );
         xTaskCreate(    weather_widget_sync_Task,       /* Function to implement the task */
                         "weather widget sync Task",     /* Name of the task */
                         5000,                           /* Stack size in words */
@@ -184,29 +153,19 @@ void weather_widget_sync_Task( void * pvParameters ) {
     if ( xEventGroupGetBits( weather_widget_event_handle ) & WEATHER_WIDGET_SYNC_REQUEST ) {       
         uint32_t retval = weather_fetch_today( &weather_config, &weather_today );
         if ( retval == 200 ) {
-            lv_label_set_text( weather_widget_temperature_label, weather_today.temp );
-            lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_RELEASED, resolve_owm_icon( weather_today.icon ) );
-            lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_PRESSED, resolve_owm_icon( weather_today.icon ) );
-            lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_CHECKED_RELEASED, resolve_owm_icon( weather_today.icon ) );
-            lv_imgbtn_set_src( weather_widget_condition_img, LV_BTN_STATE_CHECKED_PRESSED, resolve_owm_icon( weather_today.icon ) );
+            widget_set_label( weather_widget, weather_today.temp );
+            widget_set_icon( weather_widget, (lv_obj_t*)resolve_owm_icon( weather_today.icon ) );
+            widget_set_indicator( weather_widget, ICON_INDICATOR_OK );
 
             if ( weather_config.showWind ) {
-                lv_label_set_text( weather_widget_wind_label, weather_today.wind );
-                lv_obj_align( weather_widget_temperature_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, -22);
-                lv_obj_align( weather_widget_wind_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+                widget_set_extended_label( weather_widget, weather_today.wind );
             }
             else {
-                lv_label_set_text( weather_widget_wind_label, "" );
-                lv_obj_align( weather_widget_temperature_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-                lv_obj_align( weather_widget_wind_label, weather_widget_cont, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+                widget_set_extended_label( weather_widget, "" );
             }
-
-            lv_img_set_src( weather_widget_info_img, &info_ok_16px );
-            lv_obj_set_hidden( weather_widget_info_img, false );
         }
         else {
-            lv_img_set_src( weather_widget_info_img, &info_fail_16px );
-            lv_obj_set_hidden( weather_widget_info_img, false );
+            widget_set_indicator( weather_widget, ICON_INDICATOR_FAIL );
         }
         lv_obj_invalidate( lv_scr_act() );
     }
@@ -215,15 +174,7 @@ void weather_widget_sync_Task( void * pvParameters ) {
     vTaskDelete( NULL );
 }
 
-/*
- *
- */
 void weather_save_config( void ) {
-    if ( SPIFFS.exists( WEATHER_CONFIG_FILE ) ) {
-        SPIFFS.remove( WEATHER_CONFIG_FILE );
-        log_i("remove old binary weather config");
-    }
-
     fs::File file = SPIFFS.open( WEATHER_JSON_CONFIG_FILE, FILE_WRITE );
 
     if (!file) {
@@ -238,6 +189,7 @@ void weather_save_config( void ) {
         doc["autosync"] = weather_config.autosync;
         doc["showWind"] = weather_config.showWind;
         doc["imperial"] = weather_config.imperial;
+        doc["widget"] = weather_config.widget;
 
         if ( serializeJsonPretty( doc, file ) == 0) {
             log_e("Failed to write config file");
@@ -247,55 +199,30 @@ void weather_save_config( void ) {
     file.close();
 }
 
-/*
- *
- */
 void weather_load_config( void ) {
-    if ( SPIFFS.exists( WEATHER_JSON_CONFIG_FILE ) ) {        
-        fs::File file = SPIFFS.open( WEATHER_JSON_CONFIG_FILE, FILE_READ );
-        if (!file) {
-            log_e("Can't open file: %s!", WEATHER_JSON_CONFIG_FILE );
-        }
-        else {
-            int filesize = file.size();
-            SpiRamJsonDocument doc( filesize * 2 );
-
-            DeserializationError error = deserializeJson( doc, file );
-            if ( error ) {
-                log_e("update check deserializeJson() failed: %s", error.c_str() );
-            }
-            else {
-                strlcpy( weather_config.apikey, doc["apikey"], sizeof( weather_config.apikey ) );
-                strlcpy( weather_config.lat, doc["lat"], sizeof( weather_config.lat ) );
-                strlcpy( weather_config.lon, doc["lon"], sizeof( weather_config.lon ) );
-                weather_config.autosync = doc["autosync"].as<bool>();
-                weather_config.showWind = doc["showWind"].as<bool>();
-                weather_config.imperial = doc["imperial"].as<bool>();
-            }        
-            doc.clear();
-        }
-        file.close();
+    fs::File file = SPIFFS.open( WEATHER_JSON_CONFIG_FILE, FILE_READ );
+    if (!file) {
+        log_e("Can't open file: %s!", WEATHER_JSON_CONFIG_FILE );
     }
     else {
-        log_i("no json config exists, read from binary");
-        fs::File file = SPIFFS.open( WEATHER_CONFIG_FILE, FILE_READ );
+        int filesize = file.size();
+        SpiRamJsonDocument doc( filesize * 4 );
 
-        if (!file) {
-            log_e("Can't open file: %s!", WEATHER_CONFIG_FILE );
+        DeserializationError error = deserializeJson( doc, file );
+        if ( error ) {
+            log_e("update check deserializeJson() failed: %s", error.c_str() );
         }
         else {
-            int filesize = file.size();
-            if ( filesize > sizeof( weather_config ) ) {
-                log_e("Failed to read configfile. Wrong filesize!" );
-            }
-            else {
-                file.read( (uint8_t *)&weather_config, filesize );
-                file.close();
-                weather_save_config();
-                return; 
-            }
-            file.close();
-        }
+            strlcpy( weather_config.apikey, doc["apikey"], sizeof( weather_config.apikey ) );
+            strlcpy( weather_config.lat, doc["lat"], sizeof( weather_config.lat ) );
+            strlcpy( weather_config.lon, doc["lon"], sizeof( weather_config.lon ) );
+            weather_config.autosync = doc["autosync"] | true;
+            weather_config.showWind = doc["showWind"] | false;
+            weather_config.imperial = doc["imperial"] | false;
+            weather_config.widget = doc["widget"] | true;
+        }        
+        doc.clear();
     }
+    file.close();
 }
 

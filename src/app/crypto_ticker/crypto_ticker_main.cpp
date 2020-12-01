@@ -54,7 +54,7 @@ crypto_ticker_main_data_t crypto_ticker_main_data;
 
 
 void crypto_ticker_main_sync_Task( void * pvParameters );
-void crypto_ticker_main_wifictl_event_cb( EventBits_t event, char* msg );
+bool crypto_ticker_main_wifictl_event_cb( EventBits_t event, void *arg );
 
 LV_IMG_DECLARE(exit_32px);
 LV_IMG_DECLARE(setup_32px);
@@ -104,7 +104,7 @@ void crypto_ticker_main_setup( uint32_t tile_num ) {
 
 
     lv_obj_t *crypto_ticker_main_last_price_cont = lv_obj_create( crypto_ticker_main_tile, NULL );
-    lv_obj_set_size(crypto_ticker_main_last_price_cont, LV_HOR_RES_MAX , 40);
+    lv_obj_set_size(crypto_ticker_main_last_price_cont, lv_disp_get_hor_res( NULL ) , 40);
     lv_obj_add_style( crypto_ticker_main_last_price_cont, LV_OBJ_PART_MAIN, &crypto_ticker_main_style  );
     lv_obj_align( crypto_ticker_main_last_price_cont, crypto_ticker_main_update_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 20 );
     lv_obj_t *crypto_ticker_main_last_price_label = lv_label_create( crypto_ticker_main_last_price_cont, NULL);
@@ -118,7 +118,7 @@ void crypto_ticker_main_setup( uint32_t tile_num ) {
     lv_obj_align( crypto_ticker_main_last_price_value_label, NULL, LV_ALIGN_IN_RIGHT_MID, -5, 0 );
 
     lv_obj_t *crypto_ticker_main_price_change_cont = lv_obj_create( crypto_ticker_main_tile, NULL );
-    lv_obj_set_size(crypto_ticker_main_price_change_cont, LV_HOR_RES_MAX , 40);
+    lv_obj_set_size(crypto_ticker_main_price_change_cont, lv_disp_get_hor_res( NULL ) , 40);
     lv_obj_add_style( crypto_ticker_main_price_change_cont, LV_OBJ_PART_MAIN, &crypto_ticker_main_style  );
     lv_obj_align( crypto_ticker_main_price_change_cont, crypto_ticker_main_last_price_cont, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5 );
     lv_obj_t *crypto_ticker_main_price_change_label = lv_label_create( crypto_ticker_main_price_change_cont, NULL);
@@ -132,7 +132,7 @@ void crypto_ticker_main_setup( uint32_t tile_num ) {
     lv_obj_align( crypto_ticker_main_price_change_value_label, NULL, LV_ALIGN_IN_RIGHT_MID, -5, 0 );
 
     lv_obj_t *crypto_ticker_main_volume_cont = lv_obj_create( crypto_ticker_main_tile, NULL );
-    lv_obj_set_size(crypto_ticker_main_volume_cont, LV_HOR_RES_MAX , 40);
+    lv_obj_set_size(crypto_ticker_main_volume_cont, lv_disp_get_hor_res( NULL ) , 40);
     lv_obj_add_style( crypto_ticker_main_volume_cont, LV_OBJ_PART_MAIN, &crypto_ticker_main_style  );
     lv_obj_align( crypto_ticker_main_volume_cont, crypto_ticker_main_price_change_cont, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5 );
     lv_obj_t *crypto_ticker_main_volume_label = lv_label_create( crypto_ticker_main_volume_cont, NULL);
@@ -142,16 +142,16 @@ void crypto_ticker_main_setup( uint32_t tile_num ) {
     crypto_ticker_main_volume_value_label = lv_label_create( crypto_ticker_main_volume_cont , NULL);
     lv_label_set_text( crypto_ticker_main_volume_value_label, "");
     lv_obj_reset_style_list( crypto_ticker_main_volume_value_label, LV_OBJ_PART_MAIN );
-    lv_obj_set_width( crypto_ticker_main_volume_value_label, LV_HOR_RES /4 * 2 );
+    lv_obj_set_width( crypto_ticker_main_volume_value_label, lv_disp_get_hor_res( NULL ) /4 * 2 );
     lv_obj_align( crypto_ticker_main_volume_value_label, NULL, LV_ALIGN_IN_RIGHT_MID, -5, 0 );
 
 
     crypto_ticker_main_event_handle = xEventGroupCreate();
 
-    wifictl_register_cb( WIFICTL_OFF | WIFICTL_CONNECT, crypto_ticker_main_wifictl_event_cb );
+    wifictl_register_cb( WIFICTL_OFF | WIFICTL_CONNECT, crypto_ticker_main_wifictl_event_cb, "crypto ticker main" );
 }
 
-void crypto_ticker_main_wifictl_event_cb( EventBits_t event, char* msg ) {    
+bool crypto_ticker_main_wifictl_event_cb( EventBits_t event, void *arg ) {    
     switch( event ) {
         case WIFICTL_CONNECT:       crypto_ticker_config_t *crypto_ticker_config = crypto_ticker_get_config();
                                     if ( crypto_ticker_config->autosync ) {
@@ -159,6 +159,7 @@ void crypto_ticker_main_wifictl_event_cb( EventBits_t event, char* msg ) {
                                     }
                                     break;
     }
+    return( true );
 }
 
 static void enter_crypto_ticker_setup_event_cb( lv_obj_t * obj, lv_event_t event ) {
